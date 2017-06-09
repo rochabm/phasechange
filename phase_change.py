@@ -35,8 +35,11 @@ ordem = 2
 UseLump = False
 
 # -----------------------------------------------------------------------------
-# Matriz da Entalpia
-def MassMatrix44(nen,p,t,Tn,Ts,Tl,lump=False):
+
+def MassMatrixEntalpia(nen,p,t,Tn,Ts,Tl,lump=False):
+    """
+    Metodo da Entalpia
+    """
     npts = np.size(p,1)
     ntri = np.size(t,1)
     M = np.zeros((npts,npts))
@@ -115,8 +118,13 @@ def MassMatrix44(nen,p,t,Tn,Ts,Tl,lump=False):
             M[i,i] = aux
     return M
 
-#Matriz da Capacidade Efetiva
-def MassMatrix(nen,p,t,Tn,Ts,Tl,lump=False):
+# -----------------------------------------------------------------------------
+
+def MassMatrixCapEffD(nen,p,t,Tn,Ts,Tl,lump=False):
+    """
+    Metodo da capacidade Efetiva com integracao de Gauss descontinua
+    i.e. separa o elemento em regiao liquida / mushy / solida
+    """
     npts = np.size(p,1)
     ntri = np.size(t,1)
     M = np.zeros((npts,npts))
@@ -136,7 +144,8 @@ def MassMatrix(nen,p,t,Tn,Ts,Tl,lump=False):
         Te = Tn[loc2glb]
         Mk = np.zeros((nen,nen))
         if ((Te[0] - Te[1]) > 1e-6):
-            Mk,caso = IntegracaoGaussDescontinua(shape,nen,ordem,Cps,Cpl,Cpeff,y,Te,Tm,DeltaT,x,Tl,Ts)
+            Mk,caso = IntegracaoGaussDescontinua(shape,nen,ordem, \
+                               Cps,Cpl,Cpeff,y,Te,Tm,DeltaT,x,Tl,Ts)
         else:
             Mk = IntegracaoGauss(shape,nen,x,y,Te,ordem,Cps,Cpl,Cpeff,Ts,Tl)
 
@@ -159,7 +168,11 @@ def MassMatrix(nen,p,t,Tn,Ts,Tl,lump=False):
 
 # -----------------------------------------------------------------------------
 
-def MassMatrixGauss(nen,p,t,Tn,Ts,Tl,lump=False):
+def MassMatrixCapEff(nen,p,t,Tn,Ts,Tl,lump=False):
+    """
+    Metodo da capacidade efetiva com integracao de Gauss padrao
+    i.e. no elemento todo usa a mesma regra de integracao
+    """
     npts = np.size(p,1)
     ntri = np.size(t,1)
     M = np.zeros((npts,npts))
@@ -214,6 +227,9 @@ def MassMatrixGauss(nen,p,t,Tn,Ts,Tl,lump=False):
 # -----------------------------------------------------------------------------
 
 def StiffnessMatrix(ordem,p,t,a):
+    """
+    Matriz de rigidez
+    """
     npts = np.size(p,1)
     ntri = np.size(t,1)
     A = np.zeros((npts,npts))
@@ -392,8 +408,8 @@ def EscreveInfo(Tm,Tl,Ts,Tini,Tw,Lh,Cpl,Cps,den,
 
 if __name__ == "__main__":
 
-    if(len(sys.argv) != 5):
-        print("\n Usage: MetodoCapEfetiva2D [malha] [tempoFinal] [passoTempo] [deltaTemp]\n")
+    if(len(sys.argv) < 5):
+        print("\n Usage: MetodoCapEfetiva2D [malha] [tempoFinal] [passoTempo] [deltaTemp] (metodo)\n")
         sys.exit(1)
 
     # pega argumentos da linha de comando
@@ -402,17 +418,37 @@ if __name__ == "__main__":
     dt = float(sys.argv[3])
     DeltaT = float(sys.argv[4])
 
-    metodo = 3
+    # metodo
+    # 1 - capacidade efetiva
+    # 2 - entalpia
+    # 3 - capacidade efetiva c/ int. descontinua
+    metodo = 2
+    if(len(sys.argv) == 6):
+        metodo = int(sys.argv[5])
+        print("opa")
+    if(metodo == 1):
+        MassMatrix = MassMatrixCapEff
+    elif(metodo == 2):
+        print("Metodo da Entalpia")
+        MassMatrix = MassMatrixEntalpia
+    elif(metodo == 3):
+        MassMatrix = MassMatrixCapEffD
+
+    #
+    # TODO CONTINUAR DEIXANDO O METODO GERAL
+    #
 
     # lambda functions - problem dependent
     a = lambda x,y: 1.08 # condutividade termica em x
-    f = lambda x,y: 0.0 # condutividade termica em y
+    f = lambda x,y: 0.0  # condutividade termica em y
 
     # read mesh (nodes, elements)
     p,t  = LoadMesh(malha)
     npts = len(p[0])
     nen = np.shape(t)[0]
-    nquad = np.size(t, 1)  # quantidade de elementos em x
+
+    # quantidade de elementos em x
+    nquad = np.size(t, 1)
 
     # discretizacao temporal e espacial
     tt = np.arange(0.0, ft + dt, dt)
