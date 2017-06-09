@@ -1,0 +1,11 @@
+ks 1.0
+kl 1.0
+Tf -0.15
+Tinf 0.0
+Tw -45.0
+L 70.26
+cs 1.0
+cl 1.0
+cf 1.0
+p 1.0
+chuteInicial 0.5064
