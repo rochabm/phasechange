@@ -9,16 +9,15 @@
 
 import os, sys, shutil
 import numpy as np
-import matplotlib.pyplot as plt
-
 from math import sqrt, sin, pi, exp, atan
 from mef import *
 from entalpia import *
 import solucao_vila_real as sol
-#import solucao_huang as sol
+import matplotlib.pyplot as plt
 
-# Some globals
+# Some dirty globals
 # Phase change
+
 Tini = 0.0
 Tm = -1.0#-0.15
 Tw = -45.0
@@ -32,14 +31,11 @@ den = 1.0
 ordem = 2
 
 # *** Use or not LUMPING of the mass matrix ***
-UseLump = False
+UseLump = False#True
 
 # -----------------------------------------------------------------------------
-
+# Matriz da Entalpia
 def MassMatrixEntalpia(nen,p,t,Tn,Ts,Tl,lump=False):
-    """
-    Metodo da Entalpia
-    """
     npts = np.size(p,1)
     ntri = np.size(t,1)
     M = np.zeros((npts,npts))
@@ -118,13 +114,8 @@ def MassMatrixEntalpia(nen,p,t,Tn,Ts,Tl,lump=False):
             M[i,i] = aux
     return M
 
-# -----------------------------------------------------------------------------
-
-def MassMatrixCapEffD(nen,p,t,Tn,Ts,Tl,lump=False):
-    """
-    Metodo da capacidade Efetiva com integracao de Gauss descontinua
-    i.e. separa o elemento em regiao liquida / mushy / solida
-    """
+#Matriz da Capacidade Efetiva ID
+def MassMatrixCapEffID(nen,p,t,Tn,Ts,Tl,lump=False):
     npts = np.size(p,1)
     ntri = np.size(t,1)
     M = np.zeros((npts,npts))
@@ -144,8 +135,7 @@ def MassMatrixCapEffD(nen,p,t,Tn,Ts,Tl,lump=False):
         Te = Tn[loc2glb]
         Mk = np.zeros((nen,nen))
         if ((Te[0] - Te[1]) > 1e-6):
-            Mk,caso = IntegracaoGaussDescontinua(shape,nen,ordem, \
-                               Cps,Cpl,Cpeff,y,Te,Tm,DeltaT,x,Tl,Ts)
+            Mk,caso = IntegracaoGaussDescontinua(shape,nen,ordem,Cps,Cpl,Cpeff,y,Te,Tm,DeltaT,x,Tl,Ts)
         else:
             Mk = IntegracaoGauss(shape,nen,x,y,Te,ordem,Cps,Cpl,Cpeff,Ts,Tl)
 
@@ -169,10 +159,6 @@ def MassMatrixCapEffD(nen,p,t,Tn,Ts,Tl,lump=False):
 # -----------------------------------------------------------------------------
 
 def MassMatrixCapEff(nen,p,t,Tn,Ts,Tl,lump=False):
-    """
-    Metodo da capacidade efetiva com integracao de Gauss padrao
-    i.e. no elemento todo usa a mesma regra de integracao
-    """
     npts = np.size(p,1)
     ntri = np.size(t,1)
     M = np.zeros((npts,npts))
@@ -227,9 +213,6 @@ def MassMatrixCapEff(nen,p,t,Tn,Ts,Tl,lump=False):
 # -----------------------------------------------------------------------------
 
 def StiffnessMatrix(ordem,p,t,a):
-    """
-    Matriz de rigidez
-    """
     npts = np.size(p,1)
     ntri = np.size(t,1)
     A = np.zeros((npts,npts))
@@ -378,9 +361,15 @@ def SaveVTK(fname, p, t, u):
 # ----------------------------------------------------------------------------
 
 def EscreveInfo(Tm,Tl,Ts,Tini,Tw,Lh,Cpl,Cps,den,
-                UseLump,ft,dt,DeltaT,malha,tr, theta):
+                UseLump,ft,dt,DeltaT,malha,tr,theta,matr):
     fsaida = open("saida/info.txt","w")
-    fsaida.write('Caso 1D - METODO CAPACIDADE EFETIVA HOW CHENG - theta-metodo\n\n\n')
+    if(matr == 1):
+        fsaida.write('METODO ENTALPIA \n\n\n')
+    elif(matr == 2):
+        fsaida.write('METODO CAP. EFETIVA \n\n\n')
+    else:
+        fsaida.write('METODO CAP. EFETIVA ID \n\n\n')
+
     if (theta == 1.0):
         fsaida.write('Metodo de Euler  theta = %f\n\n' % theta)
     elif (theta == 0.5):
@@ -408,8 +397,8 @@ def EscreveInfo(Tm,Tl,Ts,Tini,Tw,Lh,Cpl,Cps,den,
 
 if __name__ == "__main__":
 
-    if(len(sys.argv) < 5):
-        print("\n Usage: MetodoCapEfetiva2D [malha] [tempoFinal] [passoTempo] [deltaTemp] (metodo)\n")
+    if(len(sys.argv) != 6):
+        print("\n Usage: MetodoCapEfetiva2D [malha] [tempoFinal] [passoTempo] [deltaTemp] [1-ME 2-MCE 3-MCE ID]\n")
         sys.exit(1)
 
     # pega argumentos da linha de comando
@@ -417,38 +406,19 @@ if __name__ == "__main__":
     ft = float(sys.argv[2])
     dt = float(sys.argv[3])
     DeltaT = float(sys.argv[4])
+    matriz_metodo = float(sys.argv[5])
 
-    # metodo
-    # 1 - capacidade efetiva
-    # 2 - entalpia
-    # 3 - capacidade efetiva c/ int. descontinua
-    metodo = 2
-    if(len(sys.argv) == 6):
-        metodo = int(sys.argv[5])
-        print("opa")
-    if(metodo == 1):
-        MassMatrix = MassMatrixCapEff
-    elif(metodo == 2):
-        print("Metodo da Entalpia")
-        MassMatrix = MassMatrixEntalpia
-    elif(metodo == 3):
-        MassMatrix = MassMatrixCapEffD
-
-    #
-    # TODO CONTINUAR DEIXANDO O METODO GERAL
-    #
+    metodo = 3
 
     # lambda functions - problem dependent
     a = lambda x,y: 1.08 # condutividade termica em x
-    f = lambda x,y: 0.0  # condutividade termica em y
+    f = lambda x,y: 0.0 # condutividade termica em y
 
     # read mesh (nodes, elements)
     p,t  = LoadMesh(malha)
     npts = len(p[0])
     nen = np.shape(t)[0]
-
-    # quantidade de elementos em x
-    nquad = np.size(t, 1)
+    nquad = np.size(t, 1)  # quantidade de elementos em x
 
     # discretizacao temporal e espacial
     tt = np.arange(0.0, ft + dt, dt)
@@ -485,6 +455,17 @@ if __name__ == "__main__":
         if(x < 1.0e-5):
             u0[i] = Tw
 
+    if (matriz_metodo == 1):
+        MassMatrix = MassMatrixEntalpia
+        matr=1
+    elif(matriz_metodo == 2):
+        MassMatrix = MassMatrixCapEff
+        matr=2
+    else:
+        MassMatrix = MassMatrixCapEffID
+        matr=3
+
+
     # matrizes e vetores
     A = StiffnessMatrix(ordem,p,t,a)
     M = MassMatrix(nen,p,t,u0,Ts,Tl,UseLump)
@@ -516,7 +497,7 @@ if __name__ == "__main__":
     BoundaryCondition(K, rhs, e, uval)
 
     # save initial conditions
-    SaveVTK('saida/solution_0.vtk',p,t,u0)
+    #SaveVTK('saida/solution_0.vtk',p,t,u0)
 
     fpontoX1 = open("saida/dados_pontoX1.txt","w")
     fpontoX1.write("%e %e\n" % (tt[0],u0[indxPontoX1]))
@@ -542,26 +523,39 @@ if __name__ == "__main__":
             #
             u1 = u0.copy()
 
+            u_ntheta = theta*u0 + (1-theta)*u0
+
             M = MassMatrix(nen,p,t,u0,Ts,Tl,UseLump)
-            #J = M + dt*A
             J = M + theta*dt*A
             G = M - (1.0 - theta)*dt*A
             R = np.dot(J,u1) - np.dot(G,u0)
+
             # modify system
             FixedTemp(J, u1, e, uval)
             R[e] = 0.0
             # solve
-            du = np.linalg.solve(J, R)
-            cnorm = np.linalg.norm(du)/np.linalg.norm(u0)
+
+            #cnorm = np.linalg.norm(du)/np.linalg.norm(u0)
+            #cnorm = np.linalg.norm(R)/np.linalg.norm(np.dot(K,u1))
+
             conv = False
-            maxit = 10
-            nit = 0
-            ntol = 1e-6
+            maxit = 100
+            nit = 1
+            ntol = 1e-3
             while(not conv):
+
+                # solve
+                du = np.linalg.solve(J, R)
+
+                # update
                 u1[:] = u1[:] - du[:]
 
-                M = MassMatrix(nen,p,t,u1,Ts,Tl,UseLump)
-                #J = M + A*dt
+                # continue
+                u_ntheta = theta*u1 + (1-theta)*u0
+
+                #M = MassMatrix(nen,p,t,u1,Ts,Tl,UseLump)
+                M = MassMatrix(nen,p,t,u_ntheta,Ts,Tl,UseLump)
+
                 J = M + theta*dt*A
                 G = M - (1.0 - theta)*dt*A
                 R = np.dot(J,u1) - np.dot(G,u0)
@@ -570,11 +564,21 @@ if __name__ == "__main__":
                 FixedTemp(J, u1, e, uval)
                 R[e] = 0.0
 
-                du = np.linalg.solve(J, R)
-                cnorm = np.linalg.norm(du)/np.linalg.norm(u0)
-                #print(nit,cnorm)
-                if(cnorm < ntol or nit>maxit):
+                # verify
+                cnorm = np.linalg.norm(R) #/np.linalg.norm(np.dot(K,u1))
+                if(cnorm < ntol or nit>=maxit):
                     conv = True
+                    break
+                    if(nit>=maxit):
+                        print("maxit do newton %f" % cnorm)
+                        sys.exit(0)
+                if(nit>20):
+                    ntol = 1.0e-2
+
+                #du = np.linalg.solve(J, R)
+                #cnorm = np.linalg.norm(du)/np.linalg.norm(u0)
+                #cnorm = np.linalg.norm(R)/np.linalg.norm(np.dot(K,u1))
+
                 nit = nit + 1
             print(nit,cnorm)
             #
@@ -585,7 +589,7 @@ if __name__ == "__main__":
             if(i % s == 0): #influenciado pela escolha de dt
                 print("Time %f" % (tt[i]) )
                 name = "saida/solution_%d.vtk" %(i/s)
-                SaveVTK(name,p,t,u1)
+                #SaveVTK(name,p,t,u1)
                 fpontoX1.write("%e %e\n" % (tt[i],u1[indxPontoX1]))
 
                 # Salvando o vetor temperatura apenas da linha de baixo da malha
@@ -619,7 +623,7 @@ if __name__ == "__main__":
 
     # escreve dados
     EscreveInfo(Tm,Tl,Ts,Tini,Tw,Lh,Cpl,Cps,den,UseLump,
-                ft,dt,DeltaT,malha,tr,theta)
+                ft,dt,DeltaT,malha,tr,theta,matr)
 
     # plota os dados
 #    ext,exTemp,exFrente = sol.solucao(4.0)
