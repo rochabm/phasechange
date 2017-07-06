@@ -406,9 +406,7 @@ if __name__ == "__main__":
     ft = float(sys.argv[2])
     dt = float(sys.argv[3])
     DeltaT = float(sys.argv[4])
-    matriz_metodo = float(sys.argv[5])
-
-    metodo = 3
+    matriz_metodo = int(sys.argv[5])
 
     # lambda functions - problem dependent
     a = lambda x,y: 1.08 # condutividade termica em x
@@ -457,14 +455,10 @@ if __name__ == "__main__":
 
     if (matriz_metodo == 1):
         MassMatrix = MassMatrixEntalpia
-        matr=1
     elif(matriz_metodo == 2):
         MassMatrix = MassMatrixCapEff
-        matr=2
-    else:
+    elif(matriz_metodo == 3):
         MassMatrix = MassMatrixCapEffID
-        matr=3
-
 
     # matrizes e vetores
     A = StiffnessMatrix(ordem,p,t,a)
@@ -474,10 +468,6 @@ if __name__ == "__main__":
     u1 = np.zeros((npts))
     ut = np.zeros((npts))
     du = np.zeros((npts))
-
-    # matrizes iniciais
-    K = (M + dt*A)
-    rhs = M*u0 + dt*b
 
     # condicoes de contorno
     fixedIds = []
@@ -490,11 +480,6 @@ if __name__ == "__main__":
     uval = np.ones(len(e)) * Tw
     print("Nos com condicao de Dirichlet:")
     print(e)
-
-    #
-    # TODO: conferir aqui...acho que tenho que mudar para FixTemp
-    #
-    BoundaryCondition(K, rhs, e, uval)
 
     # save initial conditions
     #SaveVTK('saida/solution_0.vtk',p,t,u0)
@@ -510,22 +495,48 @@ if __name__ == "__main__":
     tr = 0.1
     s = tr/dt
 
-    if(metodo == 3):
-        # Esta fixo para Euler implicito
-        # Theta nao muda o metodo
-        # TODO: ajeitar isso
-        theta = 2.0/3.0
+    # theta-method
+    # theta=0    explicit
+    # theta=1/2  crank-nicolson
+    # theta=2/3  Galerkin
+    # theta=1    implicit
+    theta = 1.0 #2.0/3.0
 
-        # loop in time
-        for i in range(1,len(tt)):
-            #
-            # Newton method
-            #
-            u1 = u0.copy()
+    # loop in time
+    for i in range(1,len(tt)):
+        #
+        # Newton method
+        #
+        u1 = u0.copy()
 
-            u_ntheta = theta*u0 + (1-theta)*u0
+        u_ntheta = theta*u0 + (1-theta)*u0
 
-            M = MassMatrix(nen,p,t,u0,Ts,Tl,UseLump)
+        M = MassMatrix(nen,p,t,u0,Ts,Tl,UseLump)
+        J = M + theta*dt*A
+        G = M - (1.0 - theta)*dt*A
+        R = np.dot(J,u1) - np.dot(G,u0)
+
+        # modify system
+        FixedTemp(J, u1, e, uval)
+        R[e] = 0.0
+        # solve
+
+        #cnorm = np.linalg.norm(du)/np.linalg.norm(u0)
+        #cnorm = np.linalg.norm(R)/np.linalg.norm(np.dot(K,u1))
+
+        conv = False
+        maxit = 50
+        nit = 1
+        ntol = 1e-3
+        while(not conv):
+
+            # solve and update
+            du = np.linalg.solve(J, R)
+            u1[:] = u1[:] - du[:]
+
+            # continue
+            u_ntheta = theta*u1 + (1-theta)*u0
+            M = MassMatrix(nen,p,t,u_ntheta,Ts,Tl,UseLump)
             J = M + theta*dt*A
             G = M - (1.0 - theta)*dt*A
             R = np.dot(J,u1) - np.dot(G,u0)
@@ -533,78 +544,44 @@ if __name__ == "__main__":
             # modify system
             FixedTemp(J, u1, e, uval)
             R[e] = 0.0
-            # solve
 
-            #cnorm = np.linalg.norm(du)/np.linalg.norm(u0)
-            #cnorm = np.linalg.norm(R)/np.linalg.norm(np.dot(K,u1))
+            # verify
+            cnorm = np.linalg.norm(R) #/np.linalg.norm(np.dot(K,u1))
+            if(cnorm < ntol or nit>=maxit):
+                conv = True
+                break
+                if(nit>=maxit):
+                    print("maxit do newton %f" % cnorm)
+                    sys.exit(0)
+            if(nit>20):
+                ntol = 1.0e-2
 
-            conv = False
-            maxit = 100
-            nit = 1
-            ntol = 1e-3
-            while(not conv):
+            nit = nit + 1
+        print(nit,cnorm)
+        #
+        # end of Newton method
+        #
 
-                # solve
-                du = np.linalg.solve(J, R)
+        # salva dados
+        if(i % s == 0): #influenciado pela escolha de dt
+            print("Time %f" % (tt[i]) )
+            name = "saida/solution_%d.vtk" %(i/s)
+            #SaveVTK(name,p,t,u1)
+            fpontoX1.write("%e %e\n" % (tt[i],u1[indxPontoX1]))
 
-                # update
-                u1[:] = u1[:] - du[:]
+            # Salvando o vetor temperatura apenas da linha de baixo da malha
+            down_u = np.zeros((nquad + 1))
+            down_u[0] = u1[0]
+            for j in range (4,nquad+3):
+                down_u[j-3] = u1[j]
+            down_u[nquad] = u1[1]
 
-                # continue
-                u_ntheta = theta*u1 + (1-theta)*u0
+            # criando vetor xIn - frente de solidificacao
+            xIn[i] = sol.PositionInterface(xx,down_u,Tm)
+            Interface.write("%e %e\n" % (tt[i],xIn[i]))
 
-                #M = MassMatrix(nen,p,t,u1,Ts,Tl,UseLump)
-                M = MassMatrix(nen,p,t,u_ntheta,Ts,Tl,UseLump)
-
-                J = M + theta*dt*A
-                G = M - (1.0 - theta)*dt*A
-                R = np.dot(J,u1) - np.dot(G,u0)
-
-                # modify system
-                FixedTemp(J, u1, e, uval)
-                R[e] = 0.0
-
-                # verify
-                cnorm = np.linalg.norm(R) #/np.linalg.norm(np.dot(K,u1))
-                if(cnorm < ntol or nit>=maxit):
-                    conv = True
-                    break
-                    if(nit>=maxit):
-                        print("maxit do newton %f" % cnorm)
-                        sys.exit(0)
-                if(nit>20):
-                    ntol = 1.0e-2
-
-                #du = np.linalg.solve(J, R)
-                #cnorm = np.linalg.norm(du)/np.linalg.norm(u0)
-                #cnorm = np.linalg.norm(R)/np.linalg.norm(np.dot(K,u1))
-
-                nit = nit + 1
-            print(nit,cnorm)
-            #
-            # end of Newton method
-            #
-
-            # salva dados
-            if(i % s == 0): #influenciado pela escolha de dt
-                print("Time %f" % (tt[i]) )
-                name = "saida/solution_%d.vtk" %(i/s)
-                #SaveVTK(name,p,t,u1)
-                fpontoX1.write("%e %e\n" % (tt[i],u1[indxPontoX1]))
-
-                # Salvando o vetor temperatura apenas da linha de baixo da malha
-                down_u = np.zeros((nquad + 1))
-                down_u[0] = u1[0]
-                for j in range (4,nquad+3):
-                    down_u[j-3] = u1[j]
-                down_u[nquad] = u1[1]
-
-                # criando vetor xIn - frente de solidificacao
-                xIn[i] = sol.PositionInterface(xx,down_u,Tm)
-                Interface.write("%e %e\n" % (tt[i],xIn[i]))
-
-            # prepara para proximo passo
-            u0 = u1.copy()
+        # prepara para proximo passo
+        u0 = u1.copy()
 
     print("fim")
 
@@ -623,14 +600,6 @@ if __name__ == "__main__":
 
     # escreve dados
     EscreveInfo(Tm,Tl,Ts,Tini,Tw,Lh,Cpl,Cps,den,UseLump,
-                ft,dt,DeltaT,malha,tr,theta,matr)
-
-    # plota os dados
-#    ext,exTemp,exFrente = sol.solucao(4.0)
-#    pdados = np.loadtxt("saida/dados_pontoX1.txt")
-#    plt.plot(pdados[:,0], pdados[:,1])
-#    plt.plot(ext,exTemp)
-#    plt.grid()
-#    plt.show()
+                ft,dt,DeltaT,malha,tr,theta,matriz_metodo)
 
 # end of main
