@@ -32,7 +32,7 @@ def X(lamb,Ks,dt,Nt,t):
     posicao = 2*lamb*sqrt(Ks*t*dt)
     return posicao
 
-def temperaturaZonaSolida(Tf,Ks,lamb,Nt,dt,erf,x,t,Tw):
+def temperaturaZonaSolida(Tf,Ks,lamb,Nt,dt,x,t,Tw):
     p = erf(lamb)
     p1 = erf(x/(2*(Ks*t*dt)**(1./2.)))
     result = Tw + (Tf-Tw)*(p1/p)
@@ -204,6 +204,40 @@ def solucaoEspacoX(arq,t,x):
             T[i] = Tf
         lam = lamb
     return T
+
+def solucaoEspacoPontoX(arq,t,x):
+    """
+    Retorna a tempetura em um instante de tempo t no ponto x
+    """
+    
+    parametros = open(arq,'r')
+    lista = []
+    for linha in parametros:
+        valores = linha.split()
+        lista.append( valores[1] )
+    Ks   = float(lista[0]) # Conductibilidade na fase solida
+    Kl   = float(lista[1]) # Conductibilidade na fase liquida
+    Tf   = float(lista[2]) # temperatura de mudanca de fase
+    Tinf = float(lista[3]) # Temperatura inicial na fase liquida T0
+    Tw   = float(lista[4]) # Temperatura na fronteira no instante inicial
+    L    = float(lista[5]) # calor latente
+    cs   = float(lista[6]) # calor especifico na zona solida
+    cl   = float(lista[7]) # calor especifico na zona liquida
+    cf   = float(lista[8]) # calor especifico na zona de mudanca de fase
+    p    = float(lista[9]) # pho = massa especifica
+    parametros.close()
+    
+    lam = 0.5064      # chute inicial
+    xx = x
+    lamb = calculaLambda(funcao,lam,Tinf,Tf,Ks,Kl,L,cs,Tw)
+    frente = X_espaco(lamb,Ks,t)
+    if (frente > xx):
+        T = temperaturaZonaSolida_espaco(Tf,Ks,lamb,xx,t,Tw)
+    elif (frente < xx):
+        T = temperaturaZonaLiquida_espaco(Tinf,Tf,Ks,Kl,lamb,xx,t)
+    else:
+        T = Tf
+    return T    
     
 if __name__ == "__main__":
 
