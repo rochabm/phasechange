@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Wed May 25 12:56:53 2016
-@author: gessica
-"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
@@ -31,7 +28,6 @@ def PositionInterface(x,T,Tm):
                 return x_Inter(Tm)
     return None
 
-# Solucao analitica para solidificacao
 def X(lamb,Ks,dt,Nt,t):
     posicao = 2*lamb*sqrt(Ks*t*dt)
     return posicao
@@ -52,7 +48,7 @@ def X_espaco(lamb,Ks,t):
     posicao = 2*lamb*sqrt(Ks*t)
     return posicao
 
-def temperaturaZonaSolida_espaco(Tf,Ks,lamb,erf,x,t,Tw):
+def temperaturaZonaSolida_espaco(Tf,Ks,lamb,x,t,Tw):
     p = erf(lamb)
     p1 = erf(x/(2*(Ks*t)**(1./2.)))
     result = Tw + (Tf-Tw)*(p1/p)
@@ -64,7 +60,6 @@ def temperaturaZonaLiquida_espaco(Tinf,Tf,Ks,Kl,lamb,x,t):
     result = Tinf - (((Tinf - Tf)/p)*p1)
     return result
 
-
 def funcao(lamb,Tinf,Tf,Ks,Kl,L,cs,Tw):
     p  = erf(lamb)
     p1 = 1 - erf(lamb*(Ks/Kl)**(1./2.))
@@ -74,7 +69,9 @@ def funcao(lamb,Tinf,Tf,Ks,Kl,L,cs,Tw):
 
 def calculaLambda(funcao,lam,Tinf,Tf,Ks,Kl,L,cs,Tw):
     l = sp.optimize.newton(funcao,lam,
-                           args=(Tinf,Tf,Ks,Kl,L,cs,Tw),maxiter=100,tol=1e-4)
+                           args=(Tinf,Tf,Ks,Kl,L,cs,Tw),
+                           maxiter=100,
+                           tol=1e-4)
     return l
 
 def solucao(Tfim):
@@ -101,7 +98,6 @@ def solucao(Tfim):
     Ks = 1.08
     Kl = 1.08
 
-
     #----------------------------------------------------------------------
     x    = 1.0       # x = 1 ponto onde supostamente ocorre  mudança de fase
     lam  = 0.5064    # chute inicial
@@ -118,30 +114,27 @@ def solucao(Tfim):
         frenteS[t] = X(lamb,Ks,dt,Nt,t)
         if (t==0):
             T[t] = Tinf
-            #condição inicial
-            #print'frenteSolidificacao',frenteS
         else:
-            #print'frenteSolidificacao',frenteS
-            if (frenteS[t] > x): #or T[t] < Tf):
-                T[t] = temperaturaZonaSolida(Tf, Ks, lamb, Nt, dt,erf,x,t,Tw)
-                #print 'T zona solida',T
-            elif (frenteS[t] < x): #or T[t] > Tf):
+            if (frenteS[t] > x):
+                T[t] = temperaturaZonaSolida(Tf,Ks,lamb,Nt,dt,x,t,Tw)
+            elif (frenteS[t] < x):
                 T[t] = temperaturaZonaLiquida(Tinf,Tf,Ks, Kl,lamb,Nt,dt,x,t)
-                #print 'T zona liquida',T
             else:
                 T[t] = Tf
             lam = lamb
 
     return xt,T,frenteS
 
-def solucaoEspaco(t,nquad,xf):
-
-    parametro = open('dados/arqHowCheng.txt','r')
+def solucaoEspaco(arq,t,n,xf):
+    """
+    Retorna vetores com a distribuicao de tempetura em um instante de tempo t
+    """
+    
+    parametros = open(arq,'r')
     lista = []
-    for linha in parametro:
+    for linha in parametros:
         valores = linha.split()
         lista.append( valores[1] )
-
     Ks   = float(lista[0]) # Conductibilidade na fase solida
     Kl   = float(lista[1]) # Conductibilidade na fase liquida
     Tf   = float(lista[2]) # temperatura de mudanca de fase
@@ -152,39 +145,79 @@ def solucaoEspaco(t,nquad,xf):
     cl   = float(lista[7]) # calor especifico na zona liquida
     cf   = float(lista[8]) # calor especifico na zona de mudanca de fase
     p    = float(lista[9]) # pho = massa especifica
+    parametros.close()    
 
-    parametro.close()
-    Tf = -1.0
-    Ks = 1.08
-    Kl = 1.08
-    #----------------------------------------------------------------------
+    lam = 0.5064                 # chute inicial    
+    T  = np.zeros(n+1)           # temperaturas
+    x  = np.linspace(0.0,xf,n+1) # espaco
 
-    lam  = 0.5064    # chute inicial
-    T  = np.zeros(nquad+1)   #vetor de temperatura
-    x = np.linspace(0.0,xf,nquad+1)
-    dx = x[1]-x[0]
-
-    for i in range(nquad+1):
+    T[0] = Tw
+    for i in range(1,n+1):
         xx = x[i]
         lamb = calculaLambda(funcao,lam,Tinf,Tf,Ks,Kl,L,cs,Tw)
         frente = X_espaco(lamb,Ks,t)
-        if (i==0):
-            T[i] = Tw
-            #condição inicial
-            #print'frenteSolidificacao',frenteS
+        if (frente > xx):
+            T[i] = temperaturaZonaSolida_espaco(Tf,Ks,lamb,xx,t,Tw)
+        elif (frente < xx):
+            T[i] = temperaturaZonaLiquida_espaco(Tinf,Tf,Ks,Kl,lamb,xx,t)
         else:
-            #print'frenteSolidificacao',frenteS
-            if (frente > xx): #or T[t] < Tf):
-                T[i] = temperaturaZonaSolida_espaco(Tf, Ks, lamb, erf, xx, t, Tw)
-                #print 'T zona solida',T
-            elif (frente < xx): #or T[t] > Tf):
-                T[i] = temperaturaZonaLiquida_espaco(Tinf,Tf,Ks, Kl,lamb, xx, t)
-                #print 'T zona liquida',T
-            else:
-                T[i] = Tf
-            lam = lamb
-
+            T[i] = Tf
+        lam = lamb
     return x,T
 
+def solucaoEspacoX(arq,t,x):
+    """
+    Retorna vetores com a distribuicao de tempetura em um instante de tempo t
+    """
+    
+    parametros = open(arq,'r')
+    lista = []
+    for linha in parametros:
+        valores = linha.split()
+        lista.append( valores[1] )
+    Ks   = float(lista[0]) # Conductibilidade na fase solida
+    Kl   = float(lista[1]) # Conductibilidade na fase liquida
+    Tf   = float(lista[2]) # temperatura de mudanca de fase
+    Tinf = float(lista[3]) # Temperatura inicial na fase liquida T0
+    Tw   = float(lista[4]) # Temperatura na fronteira no instante inicial
+    L    = float(lista[5]) # calor latente
+    cs   = float(lista[6]) # calor especifico na zona solida
+    cl   = float(lista[7]) # calor especifico na zona liquida
+    cf   = float(lista[8]) # calor especifico na zona de mudanca de fase
+    p    = float(lista[9]) # pho = massa especifica
+    parametros.close()
+    
+    lam = 0.5064      # chute inicial    
+    n = len(x)        # tamanho da malha
+    T  = np.zeros(n)  # temperaturas
+
+    T[0] = Tw
+    for i in range(1,n):
+        xx = x[i]
+        lamb = calculaLambda(funcao,lam,Tinf,Tf,Ks,Kl,L,cs,Tw)
+        frente = X_espaco(lamb,Ks,t)
+        if (frente > xx):
+            T[i] = temperaturaZonaSolida_espaco(Tf,Ks,lamb,xx,t,Tw)
+        elif (frente < xx):
+            T[i] = temperaturaZonaLiquida_espaco(Tinf,Tf,Ks,Kl,lamb,xx,t)
+        else:
+            T[i] = Tf
+        lam = lamb
+    return T
+    
 if __name__ == "__main__":
-    pass
+
+    arq = "dados/arqVilaReal.txt"
+    
+    #
+    # testa a solucao analitica para a distribuicao espacial da temperatura
+    #
+    x,u1 = solucaoEspaco(arq,2.0,40,4.0)
+    plt.plot(x,u1)
+    plt.show()
+
+    x = np.linspace(0,4.0,41)
+    u2 = solucaoEspacoX(arq,2.0,x)
+    plt.plot(x,u2)
+    plt.show()
+    
